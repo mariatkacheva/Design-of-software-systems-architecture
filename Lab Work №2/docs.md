@@ -20,7 +20,7 @@
 
 ## 2. Диаграмма контейнеров
 
-![Диаграмма контейнеров drawio](https://github.com/user-attachments/assets/e0fe4659-9faa-4054-b40b-50b7190b5e8e)
+![Диаграмма контейнеров drawio (1)](https://github.com/user-attachments/assets/fd07e9d2-ef61-4d25-8794-dae840f696fc)
 
 ## 3. Диаграмма компонентов
 
