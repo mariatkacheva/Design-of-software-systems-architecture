@@ -16,11 +16,12 @@
 # Результаты:
 ## 1. Диаграмма системного контекста
 
-![Системный контекст drawio (2)](https://github.com/user-attachments/assets/ff073796-6171-4bcd-82af-449a4b55fb2f)
+![Системный контекст drawio](https://github.com/user-attachments/assets/6f605f04-b5f4-438b-9fb9-60fdedd5228d)
 
 ## 2. Диаграмма контейнеров
 
-![Диаграмма контейнеров drawio (1)](https://github.com/user-attachments/assets/fd07e9d2-ef61-4d25-8794-dae840f696fc)
+![Диаграмма контейнеров drawio](https://github.com/user-attachments/assets/a2adaf41-6c70-47a1-a559-cdd26b720146)
 
 ## 3. Диаграмма компонентов
 
+![Диаграмма компонентов drawio](https://github.com/user-attachments/assets/18949d59-0b96-4bf8-80f2-b3e8b4ad16d2)
