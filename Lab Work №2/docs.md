@@ -20,8 +20,16 @@
 
 ## 2. Диаграмма контейнеров
 
-![Диаграмма контейнеров drawio](https://github.com/user-attachments/assets/a2adaf41-6c70-47a1-a559-cdd26b720146)
+Для реализации была выбрана Клиент-серверная архитектура
+
+![Диаграмма контейнеров drawio (1)](https://github.com/user-attachments/assets/85b9f373-7445-419f-ae4b-03117b65c754)
 
 ## 3. Диаграмма компонентов
 
-![Диаграмма компонентов drawio](https://github.com/user-attachments/assets/18949d59-0b96-4bf8-80f2-b3e8b4ad16d2)
+### Компонент 1: Подсистема согласования документов
+
+![Диаграмма контейнеров drawio (1)](https://github.com/user-attachments/assets/d8ff5d84-2b56-42da-8064-0e7d34a5d9cf)
+
+### Компонент 2: Веб-клиент
+
+![Диаграмма компонентов 2 drawio](https://github.com/user-attachments/assets/793729ba-2864-4d71-bf35-8c310ab2369a)
