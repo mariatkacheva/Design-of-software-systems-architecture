@@ -283,433 +283,135 @@
 
 **Серверный код**
 ```csharp
-// --------------------------------------------------------------------------------------------------------------------
-// <copyright file="SoglasovanieDokumentaWebE.aspx.cs" company="IIS">
-//   Copyright (c) IIS. All rights reserved.
-// </copyright>
-// <summary>
-//   Defines the СогласованиеДокументаWebE type.
-// </summary>
-// --------------------------------------------------------------------------------------------------------------------
+using ICSSoft.STORMNET;
+using ICSSoft.STORMNET.Business;
+using IIS.ISUZ.Controls;
+using IIS.ISUZ.Tools;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 
-namespace IIS.ISUZ.Web
+namespace IIS.ISUZ.Helpers
 {
-    using ICSSoft.STORMNET;
-    using ICSSoft.STORMNET.Business;
-    using ICSSoft.STORMNET.FunctionalLanguage;
-    using ICSSoft.STORMNET.FunctionalLanguage.SQLWhere;
-    using ICSSoft.STORMNET.Web;
-    using ICSSoft.STORMNET.Web.Tools;
-    using ICSSoft.STORMNET.Windows.Forms;
-    using IIS.ISUZ.Helpers;
-    using IIS.ISUZ.ReportService;
-    using IIS.ISUZ.SignService;
-    using IIS.ISUZ.Tools;
-    using Newtonsoft.Json;
-    using System;
-    using System.Collections.Generic;
-    using System.IO;
-    using System.Linq;
-    using System.Security.Cryptography.X509Certificates;
-    using System.Web.Services;
-
-    public partial class СогласованиеДокументаWebE : BaseEditForm<СогласованиеДокумента>
+    public static class SoglasovanieHelper
     {
-        private readonly ИСУЗBS businessServer = new ИСУЗBS();
-
-        public string parameters = "[]";
-        public bool isIframe => Request["inframe"] == "1";
-
         /// <summary>
-        /// "~/forms/SoglasovanieDokumenta/SoglasovanieDokumentaWebE.aspx"
+        /// Метод для сохранения подписи.
         /// </summary>
-        public static string ServerFormPath
+        public static void SaveSignature(string sigFile, СогласованиеДокумента dataObject, List<DataObject> listDataObjects, IDataService dataService)
         {
-            get
-            {
-                return "~/" + ClientFormPath;
-            }
-        }
+            var файлПодписи = new Файл { Имя = $"{dataObject.ПоследнийЗагруженныйФайл.Имя}.sig" };
+            byte[] signature = Convert.FromBase64String(sigFile);
+            файлПодписи.СохранитьФайл(signature, nameof(СогласованиеДокумента));
 
-        /// <summary>
-        /// "forms/SoglasovanieDokumenta/SoglasovanieDokumentaWebE.aspx"
-        /// </summary>
-        public static string ClientFormPath
-        {
-            get
-            {
-                return "forms/SoglasovanieDokumenta/SoglasovanieDokumentaWebE.aspx";
-            }
+            dataObject.ФайлПодписи = файлПодписи;
+            listDataObjects.Add(dataObject);
+
+            // Обновление объектов
+            UpdateObjects(listDataObjects, dataService);
         }
 
         /// <summary>
-        /// Конструктор формы
+        /// Согласовать/вернуть исполнителю.
         /// </summary>
-        public СогласованиеДокументаWebE()
-            : base(СогласованиеДокумента.Views.СогласованиеДокументаWebE)
-        {
+        public static void AgreeReturnToContractor(СогласованиеДокумента dataObject, IDataService dataService, string isSoglasovano, string commentSog, List<DataObject> listDataObjects,
+            FileUpload ctrlМодалСогФайлПроектаUpload, FileUpload ctrlМодалСогФайлДопUpload, FileUpload ctrlМодалСогФайлСхемаЗУUpload)
+        {           
+            if (isSoglasovano == "Да")
+            {
+                var archTekucshiiIdpolnitel = dataObject.АрхивСогласования.Cast<АрхивСогласования>().Where(x => Constants.EQPK(x.Исполнитель?.__PrimaryKey, Сотрудник.Текущий.__PrimaryKey))
+                    .OrderByDescending(x => x.ДатаНазначения).FirstOrDefault();
 
-        }
-
-        protected override void PreApplyToControls()
-        {
-            base.PreApplyToControls();
-
-            ctrlПодготовкаСхемыЗУ.Enabled = DataObject.Состояние == СостояниеСогласования.НеНачато || IsObjectCreated;
-
-            divДокумент.Visible = !isIframe;
-
-            ctrlРегистратор.Enabled = DataObject.Состояние == СостояниеСогласования.НеНачато || DataObject.Состояние == СостояниеСогласования.ВПроцессе
-                || DataObject.Состояние == СостояниеСогласования.НаДоработке;
-
-            ctrlОтправитьНаСогласованиеПодписание.Visible = (DataObject.Состояние == СостояниеСогласования.НеНачато || DataObject.Состояние == СостояниеСогласования.НаДоработке
-                || (DataObject.Состояние == СостояниеСогласования.ВПроцессе && DataObject.ОтправленоНаСогласование == false)
-                || (DataObject.Состояние == СостояниеСогласования.НаПодписании && DataObject.ОтправленоНаСогласование == false)) && Tools.Constants.EQPK(DataObject.ТекущийИсполнитель?.__PrimaryKey, Сотрудник.Текущий?.__PrimaryKey);
-
-            ctrlПодписать.Visible = DataObject.АрхивСогласования.Cast<АрхивСогласования>().OrderByDescending(x => x.CreateTime).FirstOrDefault(x =>
-                x.Подписант && x.Согласовано == Согласовано.Да && !x.Подписано && Tools.Constants.EQPK(x.Исполнитель?.__PrimaryKey, Сотрудник.Текущий.__PrimaryKey)) != null;
-
-            ctrlСогласоватьВернутьИсполнителю.Visible = !ctrlПодписать.Visible
-                && (DataObject.Состояние == СостояниеСогласования.ВПроцессе || DataObject.Состояние == СостояниеСогласования.НаПодписании) && DataObject.ОтправленоНаСогласование == true
-                && Tools.Constants.EQPK(DataObject.ТекущийИсполнитель?.__PrimaryKey, Сотрудник.Текущий?.__PrimaryKey);
-
-            ctrlСформироватьФайл.Visible = (DataObject.Состояние == СостояниеСогласования.НаРегистрации || DataObject.Состояние == СостояниеСогласования.Завершено)
-                && Сотрудник.Текущий != null && Сотрудник.Текущий.РегистраторСогласования
-                && DataObject.ФайлДляШтампов != null && DataObject.ФайлПодписи != null;
-
-            var access = new OperationAccess();
-
-            ctrlОтправитьНаСогласованиеПодписание.Enabled = access.СогласованиеОтправкаНаСогласование || access.СогласованиеИсполнитель;
-            ctrlПодписать.Enabled = access.СогласованиеПодписаниеЭЦП;
-            ctrlСогласоватьВернутьИсполнителю.Enabled = access.СогласованиеСогласоватьВернутьИсполнителю;
-            ctrlСформироватьФайл.Enabled = access.СогласованиеРегистратор;
-
-            ctrlСогласующий.Enabled = access.СогласованиеИсполнитель;
-            ctrlПодписант.Enabled = access.СогласованиеИсполнитель;
-            ctrlРегистратор.Enabled = access.СогласованиеИсполнитель;
-
-            // Чтобы кнопки выбора также становились неактивными
-            ctrlСогласующий.ReadOnly = !access.СогласованиеИсполнитель;
-            ctrlПодписант.ReadOnly = !access.СогласованиеИсполнитель;
-           
-            ctrlСогласующий.ColSortDef = new ColumnsSortDef[]
+                if (archTekucshiiIdpolnitel != null)
                 {
-                    new ColumnsSortDef(Information.ExtractPropertyName<Согласующий>(x => x.ПорядковыйНомерСогласующего), SortOrder.Asc)
-                };
+                    SetFieldArch(archTekucshiiIdpolnitel, Согласовано.Да, ctrlМодалСогФайлПроектаUpload, ctrlМодалСогФайлСхемаЗУUpload, ctrlМодалСогФайлДопUpload, commentSog);
 
-            ctrlПодписант.ColSortDef = new ColumnsSortDef[]
-                {
-                    new ColumnsSortDef(Information.ExtractPropertyName<Подписант>(x => x.ПорядковыйНомерПодписанта), SortOrder.Asc)
-                };
+                    dataObject.СогласованоПредпИсполнителем = Согласовано.Да;
+                    dataObject.ОтправленоНаСогласование = true;
 
-            ctrlПодписант.Operations.UserColumnSort = false;
-            ctrlСогласующий.Operations.UserColumnSort = false;
-            ctrlПодписант.Operations.AllowColumnResizing = false;
-            ctrlСогласующий.Operations.AllowColumnResizing = false;
-            ctrlПодписант.Operations.Delete = false;
-            ctrlСогласующий.Operations.Delete = false;
-
-            ctrlПодписант.Operations.Add = DataObject.Состояние != СостояниеСогласования.НаПодписании;
-
-            hidPodis.Value = "no";
-            hidSoglas.Value = "no";
-
-            if (DataObject.Состояние != СостояниеСогласования.НеНачато)
-            {
-                if (DataObject.Согласующий.Cast<Согласующий>().Any(x => Tools.Constants
-                    .EQPK(DataObject.ТекущийИсполнитель?.__PrimaryKey, x.СогласующийСотрудник?.__PrimaryKey)))
-                {
-                    hidSoglas.Value = DataObject.Согласующий.Cast<Согласующий>().Where(x => Tools.Constants
-                    .EQPK(DataObject.ТекущийИсполнитель?.__PrimaryKey, x.СогласующийСотрудник?.__PrimaryKey)).FirstOrDefault()?.СогласующийСотрудник?.__PrimaryKey?.ToString();
-                }
-
-                if (DataObject.Подписант.Cast<Подписант>().Any(x => Tools.Constants
-                    .EQPK(DataObject.ТекущийИсполнитель?.__PrimaryKey, x.ПодписантСотрудник?.__PrimaryKey)))
-                {
-                    hidSoglas.Value = "all";
-                    ctrlСогласующий.Operations.Add = false;
-                    hidPodis.Value = DataObject.Подписант.Cast<Подписант>().Where(x => Tools.Constants
-                    .EQPK(DataObject.ТекущийИсполнитель?.__PrimaryKey, x.ПодписантСотрудник?.__PrimaryKey)).FirstOrDefault()?.ПодписантСотрудник?.__PrimaryKey?.ToString();
-                }
-            }
-
-            if (DataObject.Состояние == СостояниеСогласования.Завершено || DataObject.Состояние == СостояниеСогласования.Отменено 
-                || DataObject.Состояние == СостояниеСогласования.НаРегистрации)
-            {
-                hidPodis.Value = "all";
-                hidSoglas.Value = "all";
-                ctrlСогласующий.Operations.Add = false;
-                ctrlПодписант.Operations.Add = false;
-            }
-
-
-            if (!Tools.Constants.EQPK(DataObject.ОсновнойИсполнитель?.__PrimaryKey, Сотрудник.Текущий.__PrimaryKey))
-            {
-                SaveAndCloseBtn.Visible = false;
-                SaveBtn.Visible = false;
-                ctrlРегистратор.Enabled = false;
-                hidPodis.Value = "all";
-                hidSoglas.Value = "all";
-                ctrlСогласующий.Operations.Add = false;
-                ctrlПодписант.Operations.Add = false;
-            }
-
-            ImageButtonPrint.Visible = DataObject.Состояние == СостояниеСогласования.Завершено;
-            ctrlСформироватьЛистСогласований.Visible = DataObject.ПоследнийЛистСогласований != null;
-
-            НастройкаЛукапов();
-        }
-
-        public override void Refresh(Dictionary<string, string> param = null)
-        {
-            if (isIframe)
-            {
-                PageContentManager.AttachJavaScriptCode(@"
-                    ShowWaitMessage('Сохранение изменений...');
-                    window.top.location.reload(true);
-                "); //если согласование используется в iframe, перезагрузить iframe вместе с родительской (основной) страницей
-            }
-            else
-            {
-                base.Refresh(param);
-            }
-        }
-
-        /// <summary>
-        /// Здесь лучше всего изменять свойства контролов на странице, которые не обрабатываются WebBinder
-        /// </summary>
-        protected override void PostApplyToControls()
-        {
-            base.PostApplyToControls();
-
-            НастройкаWOLV();
-
-            ctrПоследнийЗагруженныйФайлUpload.DataObject = DataObject.ПоследнийЗагруженныйФайл;
-            ctrФайлСоСхемойЗУUpload.DataObject = DataObject.ФайлСоСхемойЗУ;
-            ctrДополнительныйФайлUpload.DataObject = DataObject.ДополнительныйФайл;
-            ctrФайлДляПечатиUpload.DataObject = DataObject.ФайлДляПечати;
-            ctrФайлПодписиUpload.DataObject = DataObject.ФайлПодписи;
-            ctrlПоследнийЛистСогласованийUpload.DataObject = DataObject.ПоследнийЛистСогласований;
-            ctrlЛистСогласованийДляПечатиUpload.DataObject = DataObject.ЛистСогласованийДляПечати;
-
-            var parameters = GetPlaceholderParameters(DataObject);
-            this.parameters = JsonConvert.SerializeObject(parameters);
-        }
-
-        private void НастройкаЛукапов()
-        {
-            ctrПоследнийЗагруженныйФайлUpload.ObjType = typeof(СогласованиеДокумента).AssemblyQualifiedName;
-            ctrФайлСоСхемойЗУUpload.ObjType = typeof(СогласованиеДокумента).AssemblyQualifiedName;
-            ctrДополнительныйФайлUpload.ObjType = typeof(СогласованиеДокумента).AssemblyQualifiedName;
-            ctrФайлДляПечатиUpload.ObjType = typeof(СогласованиеДокумента).AssemblyQualifiedName;
-            ctrФайлПодписиUpload.ObjType = typeof(СогласованиеДокумента).AssemblyQualifiedName;
-            ctrlПоследнийЛистСогласованийUpload.ObjType = typeof(СогласованиеДокумента).AssemblyQualifiedName;
-            ctrlЛистСогласованийДляПечатиUpload.ObjType = typeof(СогласованиеДокумента).AssemblyQualifiedName;
-
-            ctrlМодалОтпрСогФайлПроектаUpload.ObjType = typeof(СогласованиеДокумента).AssemblyQualifiedName;
-            ctrlМодалОтпрСогФайлСхемаЗУUpload.ObjType = typeof(СогласованиеДокумента).AssemblyQualifiedName;
-            ctrlМодалОтпрСогФайлДопUpload.ObjType = typeof(СогласованиеДокумента).AssemblyQualifiedName;
-
-            ctrlМодалСогФайлПроектаUpload.ObjType = typeof(СогласованиеДокумента).AssemblyQualifiedName;
-            ctrlМодалСогФайлСхемаЗУUpload.ObjType = typeof(СогласованиеДокумента).AssemblyQualifiedName;
-            ctrlМодалСогФайлДопUpload.ObjType = typeof(СогласованиеДокумента).AssemblyQualifiedName;
-
-            ctrПоследнийЗагруженныйФайлUpload.ReadOnly = ctrФайлСоСхемойЗУUpload.ReadOnly =
-            ctrДополнительныйФайлUpload.ReadOnly = ctrФайлДляПечатиUpload.ReadOnly = ctrФайлПодписиUpload.ReadOnly =
-            ctrlПоследнийЛистСогласованийUpload.ReadOnly = ctrlЛистСогласованийДляПечатиUpload.ReadOnly = true;
-
-            ctrlРегистратор.LimitFunction = FunctionBuilder.BuildEquals<Сотрудник>(x => x.РегистраторСогласования, true);
-
-            if (DataObject.Документ != null && !IsPostBack)
-            {
-                if (DataObject.Документ.ТипДокумента.Equals("Распоряжение"))
-                {
-                    ctrlДокумент.ShowObjectUrl = ДокументРаспоряжениеWebE.ClientFormPath;
+                    listDataObjects.Add(archTekucshiiIdpolnitel);
                 }
                 else
                 {
-                    ctrlДокумент.ShowObjectUrl = ДокументWebE.ClientFormPath + "?tip=out";
-                }
-            }
-        }
-
-        protected override bool PreSaveObject()
-        {
-            if (DataObject.Согласующий.Count == 0 && DataObject.Подписант.Count == 0)
-            {
-                PageContentManager.AttachJavaScriptCode($"jAlert('Не указаны согласующие или подписанты', 'Сохранение невозможно');", true);
-                return false;
-            }
-
-            if (DataObject.Согласующий.Cast<Согласующий>().Any(x => x.GetStatus() == ObjectStatus.Deleted))
-            {
-                var deletedSogs = DataObject.Согласующий.Cast<Согласующий>().Where(x => x.GetStatus() == ObjectStatus.Deleted).OrderBy(x => x.ПорядковыйНомерСогласующего).ToList();
-
-                foreach(var deletedSog in deletedSogs)
-                {
-                    foreach(var sog in DataObject.Согласующий.Cast<Согласующий>())
-                    {
-                        if (sog.ПорядковыйНомерСогласующего > deletedSog.ПорядковыйНомерСогласующего)
-                            sog.ПорядковыйНомерСогласующего--;
-                    }
-                }
-            }
-
-            if (DataObject.Подписант.Cast<Подписант>().Any(x => x.GetStatus() == ObjectStatus.Deleted))
-            {
-                var deletedPodps = DataObject.Подписант.Cast<Подписант>().Where(x => x.GetStatus() == ObjectStatus.Deleted).OrderBy(x => x.ПорядковыйНомерПодписанта).ToList();
-
-                foreach (var deletedPodp in deletedPodps)
-                {
-                    foreach (var sog in DataObject.Подписант.Cast<Подписант>())
-                    {
-                        if (sog.ПорядковыйНомерПодписанта > deletedPodp.ПорядковыйНомерПодписанта)
-                            sog.ПорядковыйНомерПодписанта--;
-                    }
-                }
-            }
-
-            return base.PreSaveObject();
-        }
-
-        private void НастройкаWOLV()
-        {
-            var wsa = new WOLVSettApplyer();
-
-            ctrlArchSoglasovaniya.View = АрхивСогласования.Views.АрхивСогласованияWebD;
-            ctrlArchSoglasovaniya.LimitFunction =
-                businessServer.GetLFForDetailByMaster(
-                    Information.ExtractPropertyName<АрхивСогласования>(x => x.Согласование),
-                    DataObject.__PrimaryKey.ToString());
-
-            wsa.SettingsApply(ctrlArchSoglasovaniya);
-
-            ctrlArchSoglasovaniya.Operations.EditOnClickInRow = false;
-            ctrlArchSoglasovaniya.Operations.New = false;
-            ctrlArchSoglasovaniya.Operations.Delete = false;
-            ctrlArchSoglasovaniya.Operations.DeleteInRow = false;
-
-            if (IsObjectCreated)
-            {
-                wsa.DisableOperationsForNewObject(ctrlArchSoglasovaniya);
-            }
-        }
-
-        /// <summary>
-        /// Получить видимость кнопки подписание в подалке.
-        /// </summary>
-        /// <param name="pk"></param>
-        /// <returns></returns>
-        [WebMethod]
-        public static bool GetSignBtn(string pk)
-        {
-            var sogl = new СогласованиеДокумента();
-            sogl.SetExistObjectPrimaryKey(pk);
-            UnityGlobal.DataService.LoadObject(СогласованиеДокумента.Views.СогласованиеДокументаWebE, sogl);
-
-            return sogl.АрхивСогласования.Cast<АрхивСогласования>().OrderByDescending(x => x.CreateTime).FirstOrDefault(x =>
-                x.Подписант && !x.Подписано && Tools.Constants.EQPK(x.Исполнитель?.__PrimaryKey, Сотрудник.Текущий.__PrimaryKey)) != null;
-        }
-
-        /// <summary>
-        /// Перед формированием файла, проверим наличие номенклатуры.
-        /// </summary>
-        /// <param name="pkDoc">Ключ документа</param>
-        [WebMethod]
-        public static bool CheckNomenclature(string pkDoc)
-        {
-            if (!string.IsNullOrEmpty(pkDoc)) {
-                var doc = new Документ();
-                doc.SetExistObjectPrimaryKey(pkDoc);
-                UnityGlobal.DataService.LoadObject(Документ.Views.ДокументWebL, doc);
-
-                return doc.НоменклатураРегНомера != null;
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Подписать файл.
-        /// </summary>
-        protected void CtrlПодписать_Click(object sender, EventArgs e)
-        {
-            var listDataObjects = new List<DataObject>();
-            var valuePostback = Request["__EVENTARGUMENT"];
-
-            if (!string.IsNullOrEmpty(valuePostback))
-            {
-                var sigFile = valuePostback.Split(',')[0];
-                var modal = bool.Parse(valuePostback.Split(',')[1]);
-
-                // Вызов метода для сохранения подписи
-                SoglasovanieHelper.SaveSignature(sigFile, DataObject, listDataObjects, DataService);
-
-                if (modal)
-                {
-                    var последнийАрхивСогласования = DataObject.АрхивСогласования.Cast<АрхивСогласования>().OrderByDescending(x => x.CreateTime).FirstOrDefault(x =>
-                            x.Подписант && (modal || x.Согласовано == Согласовано.Да) && !x.Подписано && Tools.Constants.EQPK(x.Исполнитель?.__PrimaryKey, Сотрудник.Текущий.__PrimaryKey));
-
-                    последнийАрхивСогласования.Подписано = true;
-
-                    DataService.UpdateObject(последнийАрхивСогласования);
-                    ctrlСогласоватьВернутьИсполнителю_Click(sender, e);
-                }
-                else
-                {
-
-                    listDataObjects.Clear();
-
-                    var последнийАрхивСогласования = DataObject.АрхивСогласования.Cast<АрхивСогласования>().OrderByDescending(x => x.CreateTime).FirstOrDefault(x =>
-                        x.Подписант && (modal || x.Согласовано == Согласовано.Да) && !x.Подписано && Tools.Constants.EQPK(x.Исполнитель?.__PrimaryKey, Сотрудник.Текущий.__PrimaryKey));
-
-                    последнийАрхивСогласования.Подписано = true;
-                    listDataObjects.Add(последнийАрхивСогласования);
-
-                    // Вызов нового метода для обновления архива и добавления следующего подписанта
-                    SoglasovanieHelper.UpdateArchAndAddNextPodpisant(DataObject, Сотрудник.Текущий, последнийАрхивСогласования, listDataObjects, DataService,
-                        ctrlМодалСогФайлПроектаUpload, ctrlМодалСогФайлСхемаЗУUpload, ctrlМодалСогФайлДопUpload, commentSog.Value);
-
-                    Response.Redirect(Request.RawUrl);
-                }
-            }
-        }
-
-        protected void ctrlОтправитьНаСогласованиеПодписание_Click(object sender, EventArgs e)
-        {
-            try
-            {
-                if (!Page_IsValid())
-                {
+                    LogService.LogError("Не удалось найти архив согласования для текущего исполнителя " + Сотрудник.Текущий.__PrimaryKey);
                     return;
                 }
 
-                base.SaveObject();
+                var tekSoglas = dataObject.Согласующий.Cast<Согласующий>().Where(x => Constants.EQPK(x.СогласующийСотрудник?.__PrimaryKey, Сотрудник.Текущий.__PrimaryKey)).FirstOrDefault();
 
-                var list = new List<DataObject>();
+                if (tekSoglas != null)
+                {
+                    AddNextSoglas(dataObject, dataService, tekSoglas, listDataObjects);
+                }
+                else
+                {
+                    AddNextPodpisant(archTekucshiiIdpolnitel, listDataObjects, dataObject, Сотрудник.Текущий, dataService);
+                }
+            }
+            else
+            {
+                FileHandler(dataObject, ctrlМодалСогФайлПроектаUpload, ctrlМодалСогФайлСхемаЗУUpload, ctrlМодалСогФайлДопUpload);
 
-                SoglasovanieHelper.FileHandler(DataObject, ctrlМодалОтпрСогФайлПроектаUpload, ctrlМодалОтпрСогФайлСхемаЗУUpload, ctrlМодалОтпрСогФайлДопUpload);
-
-                var archOsnIsp = DataObject.АрхивСогласования.Cast<АрхивСогласования>().Where(x => x.Исполнитель.__PrimaryKey.Equals(DataObject.ОсновнойИсполнитель.__PrimaryKey))
+                var archTekucshiiIdpolnitel = dataObject.АрхивСогласования.Cast<АрхивСогласования>().Where(x => Constants.EQPK(x.Исполнитель?.__PrimaryKey, Сотрудник.Текущий.__PrimaryKey))
                     .OrderByDescending(x => x.ДатаНазначения).FirstOrDefault();
 
-                archOsnIsp.ДатаИсполения = DateTime.Now;
-                archOsnIsp.ФайлПроекта = DataObject.ПоследнийЗагруженныйФайл;
-                archOsnIsp.ФайлСоСхемойЗУ = DataObject.ФайлСоСхемойЗУ;
-                archOsnIsp.ДопФайл = DataObject.ДополнительныйФайл;
-                archOsnIsp.КомментарийИсполнителя = commentOtpSog.Value;
-
-                list.Add(archOsnIsp);
-
-                if (DataObject.Согласующий.Count > 0)
+                if (archTekucshiiIdpolnitel != null)
                 {
-                    var soglas = DataObject.Согласующий.Cast<Согласующий>().ToList().OrderBy(x => x.ПорядковыйНомерСогласующего).FirstOrDefault();
-                    DataObject.ТекущийИсполнитель = soglas.СогласующийСотрудник;
+                    SetFieldArch(archTekucshiiIdpolnitel, Согласовано.Нет, ctrlМодалСогФайлПроектаUpload, ctrlМодалСогФайлСхемаЗУUpload, ctrlМодалСогФайлДопUpload, commentSog);
+                    dataObject.СогласованоПредпИсполнителем = Согласовано.Нет;
+                    dataObject.ОтправленоНаСогласование = false;
 
+                    listDataObjects.Add(archTekucshiiIdpolnitel);
+                }
+                else
+                {
+                    LogService.LogError("Не удалось найти архив согласования для текущего исполнителя " + Сотрудник.Текущий.__PrimaryKey);
+                    return;
+                }
+
+                var archOsnIsp = new АрхивСогласования
+                {
+                    Согласование = dataObject,
+                    Исполнитель = dataObject.ОсновнойИсполнитель,
+                    ДатаНазначения = DateTime.Now,
+                    ОсновнойИсполнитель = true,
+                    Согласующий = false,
+                    Подписант = false,
+                    Согласовано = Согласовано.Пусто
+                };
+
+                dataObject.АрхивСогласования.Add(archOsnIsp);
+                dataObject.ТекущийИсполнитель = dataObject.ОсновнойИсполнитель;
+                dataObject.Состояние = СостояниеСогласования.НаДоработке;
+            }
+
+            if (!listDataObjects.Any(x => Constants.EQPK(x.__PrimaryKey, dataObject.__PrimaryKey)))
+            {
+                listDataObjects.Add(dataObject);
+            }
+
+            // Обновление объектов
+            UpdateObjects(listDataObjects, dataService);
+        }
+
+        /// <summary>
+        /// Добавить следующего согласующего
+        /// </summary>
+        /// <param name="tekSoglas">Согласующий.</param>
+        /// <param name="list">Список на обновление.</param>
+        private static void AddNextSoglas(СогласованиеДокумента dataObject, IDataService dataService, Согласующий tekSoglas, List<DataObject> list)
+        {
+            if (tekSoglas.ПорядковыйНомерСогласующего < dataObject.Согласующий.Count)
+            {
+                var nextSoglas = dataObject.Согласующий.Cast<Согласующий>().Where(x => x.ПорядковыйНомерСогласующего == (tekSoglas.ПорядковыйНомерСогласующего + 1)).FirstOrDefault();
+                if (nextSoglas != null)
+                {
+                    dataObject.ТекущийИсполнитель = nextSoglas.СогласующийСотрудник;
                     var archSog = new АрхивСогласования()
                     {
-                        Согласование = DataObject,
-                        Исполнитель = soglas.СогласующийСотрудник,
+                        Согласование = dataObject,
+                        Исполнитель = nextSoglas.СогласующийСотрудник,
                         ДатаНазначения = DateTime.Now,
                         ОсновнойИсполнитель = false,
                         Согласующий = true,
@@ -717,18 +419,25 @@ namespace IIS.ISUZ.Web
                         Согласовано = Согласовано.Пусто
                     };
 
-                    DataObject.АрхивСогласования.Add(archSog);
-                    DataObject.Состояние = СостояниеСогласования.ВПроцессе;
-                    DataObject.ДатаОтправкиНаСогласование = DateTime.Now;
+                    dataObject.АрхивСогласования.Add(archSog);
                 }
                 else
                 {
-                    var podpisant = DataObject.Подписант.Cast<Подписант>().ToList().OrderBy(x => x.ПорядковыйНомерПодписанта).FirstOrDefault();
-                    DataObject.ТекущийИсполнитель = podpisant.ПодписантСотрудник;
+                    LogService.LogError("Не удалось найти следующего согласасующего с порядковым номером " + (tekSoglas.ПорядковыйНомерСогласующего + 1));
+                    return;
+                }
+            }
+            else
+            {
+                if (dataObject.Подписант.Count > 0)
+                {
+                    var podpisant = dataObject.Подписант.Cast<Подписант>().ToList().OrderBy(x => x.ПорядковыйНомерПодписанта).FirstOrDefault();
+                    dataObject.ТекущийИсполнитель = podpisant.ПодписантСотрудник;
+                    dataObject.Состояние = СостояниеСогласования.НаПодписании;
 
                     var archPod = new АрхивСогласования()
                     {
-                        Согласование = DataObject,
+                        Согласование = dataObject,
                         Исполнитель = podpisant.ПодписантСотрудник,
                         ДатаНазначения = DateTime.Now,
                         ОсновнойИсполнитель = false,
@@ -737,53 +446,313 @@ namespace IIS.ISUZ.Web
                         Согласовано = Согласовано.Пусто
                     };
 
-                    DataObject.АрхивСогласования.Add(archPod);
-                    DataObject.Состояние = СостояниеСогласования.НаПодписании;
+                    dataObject.АрхивСогласования.Add(archPod);
                 }
-
-                DataService.LoadObject(Документ.Views.ДокументWebE, DataObject.Документ);
-                DataObject.Документ.Состояние = СостояниеДокумента.НаСогласовании;
-
-                DataObject.ОтправленоНаСогласование = true;
-
-                list.Add(DataObject);
-                list.Add(DataObject.Документ);
-
-                var arrayToSave = list.ToArray();
-
-                DataService.UpdateObjects(ref arrayToSave);
-
-                if (isIframe)
-                    PageContentManager.AttachJavaScriptCode($"window.parent.location.reload();", true);
                 else
-                    Response.Redirect(Request.RawUrl);
-            }
-            catch(Exception ex)
-            {
-                LogService.LogError(ex);
+                {
+                    dataObject.Состояние = СостояниеСогласования.НаРегистрации;
+
+                    dataObject.ТекущийИсполнитель = dataObject.Регистратор;
+                    var archReg = new АрхивСогласования()
+                    {
+                        Согласование = dataObject,
+                        Исполнитель = dataObject.Регистратор,
+                        ДатаНазначения = DateTime.Now,
+                        ОсновнойИсполнитель = false,
+                        Согласующий = false,
+                        Подписант = false,
+                        Согласовано = Согласовано.Пусто
+                    };
+                    dataObject.АрхивСогласования.Add(archReg);
+                    dataService.LoadObject(Документ.Views.ДокументWebE, dataObject.Документ);
+                    dataObject.Документ.Состояние = СостояниеДокумента.НаРегистрации;
+
+                    list.Add(dataObject.Документ);
+                }
             }
         }
 
-        protected void ctrlСогласоватьВернутьИсполнителю_Click(object sender, EventArgs e)
+        /// <summary>
+        /// Метод для обновления архива и добавления следующего подписанта.
+        /// </summary>
+        public static void UpdateArchAndAddNextPodpisant(СогласованиеДокумента dataObject, Сотрудник текущийСотрудник, АрхивСогласования последнийАрхивСогласования, List<DataObject> listDataObjects, IDataService dataService, 
+            FileUpload ctrlМодалСогФайлПроектаUpload, FileUpload ctrlМодалСогФайлСхемаЗУUpload, FileUpload ctrlМодалСогФайлДопUpload, string commentSog)
         {
-            if (!Page_IsValid())
+            // Обновление полей архива
+            SetFieldArch(последнийАрхивСогласования, Согласовано.Да, ctrlМодалСогФайлПроектаUpload, ctrlМодалСогФайлСхемаЗУUpload, ctrlМодалСогФайлДопUpload, commentSog);
+            listDataObjects.Add(последнийАрхивСогласования);
+
+            // Добавление следующего подписанта
+            AddNextPodpisant(последнийАрхивСогласования, listDataObjects, dataObject, текущийСотрудник, dataService);
+
+            // Обновление объектов
+            var arrayToUpdate = listDataObjects.ToArray();
+            dataService.UpdateObjects(ref arrayToUpdate);
+        }
+
+        /// <summary>
+        /// Метод для обновления объектов.
+        /// </summary>
+        private static void UpdateObjects(List<DataObject> listDataObjects, IDataService dataService)
+        {
+            var arrayToUpdate = listDataObjects.ToArray();
+            dataService.UpdateObjects(ref arrayToUpdate);
+        }
+
+        /// <summary>
+        /// Изменение полей в архиве согласования.
+        /// </summary>
+        public static void SetFieldArch(АрхивСогласования архив, Согласовано согласовано, FileUpload ctrlМодалСогФайлПроектаUpload, 
+            FileUpload ctrlМодалСогФайлСхемаЗУUpload, FileUpload ctrlМодалСогФайлДопUpload, string commentSog)
+        {
+            архив.ДатаИсполения = DateTime.Now;
+
+            var files = ctrlМодалСогФайлПроектаUpload.SaveFile();
+
+            if (files[0] != null)
             {
+                ConvertFile(ref files[0]);
+
+                архив.ФайлПроекта = files[0];
+            }
+
+            files = ctrlМодалСогФайлСхемаЗУUpload.SaveFile();
+
+            if (files[0] != null)
+            {
+                ConvertFile(ref files[0]);
+
+                архив.ФайлСоСхемойЗУ = files[0]; // Записываем файл (может быть null)
+            }
+
+            files = ctrlМодалСогФайлДопUpload.SaveFile();
+
+            if (files[0] != null)
+            {
+                архив.ДопФайл = files[0];
+            }
+
+            архив.Согласовано = согласовано;
+            архив.КомментарийИсполнителя = commentSog;
+        }
+
+        /// <summary>
+        /// Добавить следующего подписанта.
+        /// </summary>
+        public static void AddNextPodpisant(АрхивСогласования архив, List<DataObject> list, СогласованиеДокумента dataObject, Сотрудник текущийСотрудник, IDataService dataService)
+        {
+            var tekPodpisant = dataObject.Подписант.Cast<Подписант>()
+                .FirstOrDefault(x => x.ПодписантСотрудник.__PrimaryKey.Equals(текущийСотрудник.__PrimaryKey));
+
+            if (tekPodpisant == null)
+            {
+                LogService.LogError("Не удалось найти согласасующего/подписанта с ключем " + (текущийСотрудник.__PrimaryKey));
                 return;
             }
-
-            base.SaveObject();
-
-            var list = new List<DataObject>();
-
-            SoglasovanieHelper.AgreeReturnToContractor(DataObject, DataService, ctrlSoglasovano.SelectedValue, commentSog.Value, list,
-                ctrlМодалСогФайлПроектаUpload, ctrlМодалСогФайлСхемаЗУUpload, ctrlМодалСогФайлДопUpload);  
-
-            if (isIframe)
-                PageContentManager.AttachJavaScriptCode($"window.parent.location.reload();", true);
             else
-                Response.Redirect(Request.RawUrl);
+            {
+                if (архив.Подписано)
+                {
+                    if (tekPodpisant.ПорядковыйНомерПодписанта < dataObject.Подписант.Count)
+                    {
+                        var nextPodpisant = dataObject.Подписант.Cast<Подписант>()
+                            .FirstOrDefault(x => x.ПорядковыйНомерПодписанта == (tekPodpisant.ПорядковыйНомерПодписанта + 1));
+
+                        if (nextPodpisant != null)
+                        {
+                            dataObject.ТекущийИсполнитель = nextPodpisant.ПодписантСотрудник;
+
+                            var archPod = new АрхивСогласования()
+                            {
+                                Согласование = dataObject,
+                                Исполнитель = nextPodpisant.ПодписантСотрудник,
+                                ДатаНазначения = DateTime.Now,
+                                ОсновнойИсполнитель = false,
+                                Согласующий = false,
+                                Подписант = true,
+                                Согласовано = Согласовано.Пусто
+                            };
+
+                            dataObject.АрхивСогласования.Add(archPod);
+                        }
+                        else
+                        {
+                            LogService.LogError("Не удалось найти следующего подписанта с порядковым номером " + (tekPodpisant.ПорядковыйНомерПодписанта + 1));
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        dataObject.Состояние = СостояниеСогласования.НаРегистрации;
+
+                        dataObject.ТекущийИсполнитель = dataObject.Регистратор;
+                        var archReg = new АрхивСогласования()
+                        {
+                            Согласование = dataObject,
+                            Исполнитель = dataObject.Регистратор,
+                            ДатаНазначения = DateTime.Now,
+                            ОсновнойИсполнитель = false,
+                            Согласующий = false,
+                            Подписант = false,
+                            Согласовано = Согласовано.Пусто
+                        };
+                        dataObject.АрхивСогласования.Add(archReg);
+                        dataService.LoadObject(Документ.Views.ДокументWebE, dataObject.Документ);
+                        dataObject.Документ.Состояние = СостояниеДокумента.НаРегистрации;
+
+                        list.Add(dataObject.Документ);
+                    }
+                }
+
+                list.Add(dataObject);
+            }
         }
+
+        /// <summary>
+        /// Преобразование файла.
+        /// </summary>
+        public static void ConvertFile(ref Файл file)
+        {
+            var extention = Path.GetExtension(Path.Combine(file.Путь, file.Имя));
+            if (extention == ".doc" || extention == ".docx")
+            {
+                var result = new DocToPdfConverter().ConvertDocToPdfAndDeleteSource(Path.Combine(file.Путь, file.Имя));
+
+                if (result != null && result.TryGetValue("Path", out string outPath) && result.TryGetValue("Name", out string outName))
+                {
+                    file.Путь = outPath;
+                    file.Имя = outName;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Обработка файловых контроллов на формах согласования и лк.
+        /// </summary>
+        /// <param name="согласованиеДокумента">СогласованиеДокумента.</param>
+        /// <param name="ФайлПроектаUpload">Файловый контролл.</param>
+        /// <param name="ФайлСхемаЗУUpload">Файловый контролл.</param>
+        /// <param name="ФайлДопUpload">Файловый контролл.</param>
+        public static void FileHandler(СогласованиеДокумента согласованиеДокумента, FileUpload ФайлПроектаUpload, FileUpload ФайлСхемаЗУUpload, FileUpload ФайлДопUpload)
+        {
+            Файл[] filesPDF = null;
+            var files = ФайлПроектаUpload.SaveFile();
+
+            if (files != null && files[0] != null)
+            {
+                // Делаем копию файла, чтобы основной остался doc, а скопированный стал pdf   
+                var newFilePDF = new Файл();
+                files[0].CopyTo(newFilePDF, false, false, false);
+                filesPDF = new Файл[] { newFilePDF, null };
+
+                ConvertFile(ref filesPDF[0]);
+
+                согласованиеДокумента.ПоследнийЗагруженныйФайл = files[0];
+            }
+
+            files = ФайлСхемаЗУUpload.SaveFile();
+
+            if (files != null && files[0] != null)
+            {
+                ConvertFile(ref files[0]);
+
+                согласованиеДокумента.ФайлСоСхемойЗУ = files[0]; // Записываем файл (может быть null)
+            }
+
+            if (filesPDF != null && filesPDF[0] != null)
+            {
+                Файл файлДляШтампов = null;
+                if (согласованиеДокумента.ПодготовкаСхемыЗУ && согласованиеДокумента.ФайлСоСхемойЗУ != null)
+                {
+                    var result = StampHelper.CombineTwoPDF(Path.Combine(filesPDF[0].Путь, filesPDF[0].Имя),
+                        Path.Combine(согласованиеДокумента.ФайлСоСхемойЗУ.Путь, согласованиеДокумента.ФайлСоСхемойЗУ.Имя));
+
+                    if (result != null && result.TryGetValue("Path", out string outPath) && result.TryGetValue("Name", out string outName))
+                    {
+                        файлДляШтампов = new Файл()
+                        {
+                            Имя = outName,
+                            Путь = outPath,
+                        };
+                    }
+                }
+
+                согласованиеДокумента.ФайлДляШтампов = файлДляШтампов ?? new Файл()
+                {
+                    Имя = filesPDF[0].Имя,
+                    Путь = filesPDF[0].Путь,
+                };
+            }
+
+            files = ФайлДопUpload.SaveFile();
+
+            if (files != null && files[0] != null)
+            {
+                согласованиеДокумента.ДополнительныйФайл = files[0];
+            }
+        }
+    }
+}
+
 ```
 
-**Описание**
+**Используемые принципы**
 
+**KISS**
+
+Принцип KISS предполагает, что код должен быть простым и понятным, без лишней сложности.
+
+В коде используются простые и понятные методы для реализации функционала. 
+Например, в методах, таких как SaveSignature и AgreeReturnToContractor, функциональность четко разделена на отдельные шаги. 
+Так, например, методе SaveSignature выполняется только сохранение подписи и обновление данных, без внедрения лишней логики. 
+Также вся логика по обработке файлов и изменениям состояния документа разделена на отдельные методы и помещена в отдельный файл SoglasovanieHelper (серверный код выше).
+
+Например:
+
+- Метод SaveSignature отвечает за сохранение подписи. Код внутри метода выполняет одну задачу: конвертирует строку в байты и сохраняет файл, а затем обновляет объект документа.
+- Метод AgreeReturnToContractor достаточно компактный, но при этом функционально разделен на несколько ясных и отдельных шагов: проверка согласования, работа с архивами и добавление следующих согласующих/подписантов.
+
+**YAGNI**
+
+Принцип YAGNI призывает не реализовывать функциональность, которая не используется в данный момент, и не добавлять лишних возможностей.
+
+В представленном коде не добавлено лишних функций, которые могут быть потенциально полезны в будущем. Например, методы, работающие с файлами, обрабатывают только те файлы, которые реально необходимы в контексте работы с согласованием. Нет лишних условий или «передуманных» фич.
+
+Например:
+
+- В методах, например, в FileHandler, файловые контроллы обрабатываются строго в рамках текущего контекста — для сохранения и преобразования документов. Никакие дополнительные функции или проверки, не связанные с этой задачей, не добавляются.
+
+**DRY**
+
+Принцип DRY предполагает, что код не должен содержать повторяющихся фрагментов. Логика, которая используется несколько раз, должна быть вынесена в отдельные методы.
+
+В коде видно, что часто повторяющиеся действия, такие как обработка файлов или обновление архивов согласования, вынесены в отдельные методы, например, в SetFieldArch или FileHandler. Это минимизирует повторение кода и делает его более поддерживаемым.
+
+Например:
+
+- В методах SetFieldArch и FileHandler используются общие паттерны обработки файлов. Эти методы вызываются в разных частях кода, избегая повторения одинаковых фрагментов логики.
+Например, метод FileHandler обрабатывает несколько типов файлов, но при этом общая логика сохранения и конвертации файлов выведена в отдельный метод ConvertFile, что делает код компактным и избегает дублирования.
+
+**SOLID**
+
+Принципы SOLID — это набор из пяти принципов объектно-ориентированного программирования, которые помогают создавать удобный для расширения и поддерживаемый код.
+
+1. Single Responsibility Principle (SRP)
+   Принцип единой ответственности утверждает, что класс должен иметь одну причину для изменения.
+   Каждый метод в коде имеет четкую задачу. Например, метод SaveSignature отвечает только за сохранение подписи, а метод AgreeReturnToContractor только за логику согласования. Это позволяет легко поддерживать и расширять код, не затрагивая другие части системы.
+
+3. Open/Closed Principle (OCP)
+   Код должен быть открыт для расширения, но закрыт для модификации.
+   Методология работы с файлами и согласованиями подразумевает, что можно добавлять новые форматы файлов или этапы согласования, не изменяя основной код. Например, если в будущем понадобится поддержка новых типов файлов, достаточно будет модифицировать только соответствующие методы, не изменяя общую структуру классов и логики.
+
+4. Liskov Substitution Principle (LSP)
+   Объекты подклассов должны быть заменяемыми объектами базового класса.
+   Использование наследования, если оно имело бы место в более крупных классах (например, для разных типов файлов или сотрудников), должно позволять безошибочно заменять экземпляры подклассов.
+
+5. Interface Segregation Principle (ISP)
+   Интерфейсы должны быть специфичными и не перегруженными ненужными методами.
+   В коде интерфейсы не перегружены лишними методами. Каждый интерфейс предоставляет только те методы, которые необходимы для работы с объектами в текущем контексте (например, методы для загрузки и сохранения файлов).
+
+5. Dependency Inversion Principle (DIP)
+   Зависимости должны быть инвертированы, т.е. классы должны зависеть от абстракций, а не от конкретных классов.
+   Принцип DIP соблюдается через использование абстракций (например, IDataService), что позволяет легко подменять реализацию данных (например, использовать разные источники данных или сервисы).
