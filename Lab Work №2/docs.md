@@ -30,6 +30,6 @@
 
 ![Диаграмма компонентов 1 drawio (1)](https://github.com/user-attachments/assets/18c922a9-9b5e-4558-b43e-446f9edca042)
 
-### Конткйнер 2: Веб-клиент
+### Контейнер 2: Веб-клиент
 
 ![Диаграмма компонентов 2 drawio](https://github.com/user-attachments/assets/793729ba-2864-4d71-bf35-8c310ab2369a)
