@@ -293,204 +293,150 @@ API предоставляет функционал для создания, о�
 
 ## Реализация API
 
-В рамках лабораторной работы представим упрощенную структуру проекта
+```python
+from flask import Flask, request, jsonify
 
-**Файл Models/Document.cs:**
+app = Flask(__name__)
 
-Модель документа:
+documents = []
+users = []
+approvals = []
 
-```csharp
-using System;
+def find_document(doc_id):
+    return next((doc for doc in documents if doc["id"] == doc_id), None)
 
-namespace DocumentApprovalAPI.Models
-{
-    public class Document
-    {
-        public int Id { get; set; }
-        public string Title { get; set; }
-        public string Content { get; set; }
-        public string Status { get; set; } = "На согласовании";
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+def find_user(user_id):
+    return next((user for user in users if user["id"] == user_id), None)
+
+# 1. Получение списка документов (GET /api/v1/documents)
+@app.route("/api/v1/documents", methods=["GET"])
+def get_documents():
+    """ Возвращает список всех документов """
+    if not documents:
+        return jsonify({"info": "Документы отсутствуют"}), 200
+    return jsonify(documents), 200
+
+# 2. Добавление нового документа (POST /api/v1/documents)
+@app.route("/api/v1/documents", methods=["POST"])
+def create_document():
+    """ Добавляет новый документ в систему """
+    data = request.json
+    if not data.get("title") or not data.get("content") or not data.get("author_id"):
+        return jsonify({"error": "Некорректный ввод данных"}), 400
+
+    doc_id = len(documents) + 1
+    new_doc = {
+        "id": doc_id,
+        "title": data["title"],
+        "content": data["content"],
+        "status": "На согласовании",
+        "author_id": data["author_id"]
     }
-}
-```
+    documents.append(new_doc)
+    return jsonify(new_doc), 201
 
-**Файл Data/AppDbContext.cs:**
+# 5. Получение списка пользователей (GET /api/v1/users)
+@app.route("/api/v1/users", methods=["GET"])
+def get_users():
+    """ Возвращает список всех пользователей """
+    if not users:
+        return jsonify({"info": "Пользователи отсутствуют"}), 200
+    return jsonify(users), 200
 
-Создание контекста базы данных
+# 6. Добавление нового пользователя (POST /api/v1/users)
+@app.route("/api/v1/users", methods=["POST"])
+def create_user():
+    """ Добавляет нового пользователя """
+    data = request.json
+    if not data.get("name") or not data.get("role"):
+        return jsonify({"error": "Некорректный ввод данных"}), 400
 
-```csharp
-using Microsoft.EntityFrameworkCore;
-using DocumentApprovalAPI.Models;
-
-namespace DocumentApprovalAPI.Data
-{
-    public class AppDbContext : DbContext
-    {
-        public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
-
-        public DbSet<Document> Documents { get; set; }
+    user_id = len(users) + 1
+    new_user = {
+        "id": user_id,
+        "name": data["name"],
+        "role": data["role"]
     }
-}
-```
+    users.append(new_user)
+    return jsonify(new_user), 201
 
-**Файл Controllers/DocumentsController.cs:**
+# 6. Согласование документа (POST /api/v1/approvals)
+@app.route("/api/v1/approvals", methods=["POST"])
+def approve_document():
+    """ Позволяет согласовать документ """
+    data = request.json
+    doc = find_document(data.get("document_id"))
+    user = find_user(data.get("approver_id"))
 
-Настройка контроллера документов
-   
-```csharp
-using Microsoft.AspNetCore.Mvc;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using DocumentApprovalAPI.Data;
-using DocumentApprovalAPI.Models;
-using Microsoft.EntityFrameworkCore;
+    if not doc:
+        return jsonify({"error": "Документ не найден"}), 404
+    if not user:
+        return jsonify({"error": "Пользователь не найден"}), 404
 
-namespace DocumentApprovalAPI.Controllers
-{
-    [Route("api/v1/documents")]
-    [ApiController]
-    public class DocumentsController : ControllerBase
-    {
-        private readonly AppDbContext _context;
-
-        public DocumentsController(AppDbContext context)
-        {
-            _context = context;
-        }
-
-        // 1. Получение списка документов (GET /api/v1/documents)
-        [HttpGet]
-        public async Task<ActionResult<IEnumerable<Document>>> GetDocuments()
-        {
-            var documents = await _context.Documents.ToListAsync();
-            if (documents.Count == 0)
-            {
-                return Ok(new { info = "Документы отсутствуют" });
-            }
-            return Ok(documents);
-        }
-
-        // 2. Получение документа по ID (GET /api/v1/documents/{id})
-        [HttpGet("{id}")]
-        public async Task<ActionResult<Document>> GetDocument(int id)
-        {
-            var document = await _context.Documents.FindAsync(id);
-            if (document == null)
-            {
-                return NotFound(new { error = "Документ не найден" });
-            }
-            return Ok(document);
-        }
-
-        // 3. Добавление нового документа (POST /api/v1/documents)
-        [HttpPost]
-        public async Task<ActionResult<Document>> CreateDocument([FromBody] Document document)
-        {
-            if (string.IsNullOrEmpty(document.Title) || string.IsNullOrEmpty(document.Content))
-            {
-                return BadRequest(new { error = "Некорректный ввод данных" });
-            }
-
-            _context.Documents.Add(document);
-            await _context.SaveChangesAsync();
-
-            return CreatedAtAction(nameof(GetDocument), new { id = document.Id }, document);
-        }
-
-        // 4. Обновление документа (PUT /api/v1/documents/{id})
-        [HttpPut("{id}")]
-        public async Task<IActionResult> UpdateDocument(int id, [FromBody] Document updatedDocument)
-        {
-            var document = await _context.Documents.FindAsync(id);
-            if (document == null)
-            {
-                return NotFound(new { error = "Документ не найден" });
-            }
-
-            document.Title = updatedDocument.Title;
-            document.Content = updatedDocument.Content;
-            document.Status = updatedDocument.Status;
-            
-            await _context.SaveChangesAsync();
-
-            return Ok(document);
-        }
-
-        // 5. Удаление документа (DELETE /api/v1/documents/{id})
-        [HttpDelete("{id}")]
-        public async Task<IActionResult> DeleteDocument(int id)
-        {
-            var document = await _context.Documents.FindAsync(id);
-            if (document == null)
-            {
-                return NotFound(new { error = "Документ не найден" });
-            }
-
-            _context.Documents.Remove(document);
-            await _context.SaveChangesAsync();
-
-            return Ok(new { message = "Документ успешно удален" });
-        }
+    approval = {
+        "document_id": doc["id"],
+        "approver_id": user["id"],
+        "status": data.get("status"),
+        "comment": data.get("comment")
     }
-}
-```
+    approvals.append(approval)
+    doc["status"] = "Согласован" if data.get("status") == "approved" else "Отклонен"
 
-**Файл Program.cs:**
+    return jsonify({"message": "Документ согласован", "status": approval["status"]}), 201
 
-Настройка базы данных
-
-```csharp
-using Microsoft.EntityFrameworkCore;
-using DocumentApprovalAPI.Data;
-
-var builder = WebApplication.CreateBuilder(args);
-
-// Подключаем базу данных SQLite
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite("Data Source=documents.db"));
-
-builder.Services.AddControllers();
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
-
-var app = builder.Build();
-
-app.UseSwagger();
-app.UseSwaggerUI();
-
-app.UseHttpsRedirection();
-app.UseAuthorization();
-app.MapControllers();
-
-// Создаем БД при запуске
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.Migrate();
-}
-
-app.Run();
+if __name__ == "__main__":
+    app.run(debug=True)
 ```
 
 ## Тестирование API
 
 Тестирование API проводилось с использование сервиса Postman:
 
-<
-По каждому реализуемому API предоставить следующую информацию: 
-Тестируемое API.
-Метод.
-Строка запроса, используемая для тестирования. Можно представить в виде текстовой строки или принтскрина из Postman, чтобы продемонстрировать все передаваемые данные.
-Принтскрин из Postman передаваемых заголовков и параметров (Params, Authorization, Headers, Body).
-Принтскрины из Postman полученного ответа (Body и Headers).
-Код автотестов (на получение возвращаемого статуса и содержимого ответа).
-Принтскрины из Postman результатов тестирования (Test Results).
->
+### Тест 1: Получение списка документов (когда документов нет)
 
+![image](https://github.com/user-attachments/assets/f545a681-1662-4a65-8530-9101c28f5351)
 
+### Тест 2: Успешное получение списка документов (после добавления документа)
 
+Добавление документа:
 
+![image](https://github.com/user-attachments/assets/a75f874f-fbce-40a5-afad-8e7ccad303c1)
 
+Запрос после добавления документа:
+
+![image](https://github.com/user-attachments/assets/177b8725-73dd-405c-9249-26f849596353)
+
+### Тест 3: Успешное добавление документа
+
+![image](https://github.com/user-attachments/assets/382dd322-e2a5-4a38-a2c1-b78faa1b928e)
+
+### Тест 4: Ошибка при отсутствии обязательных полей
+
+![image](https://github.com/user-attachments/assets/0f9200bd-2f90-4c1d-af75-5c275f7df7c9)
+
+### Тест 5: Получение списка пользователей (когда пользователей нет)
+
+![image](https://github.com/user-attachments/assets/c3073e71-1084-48fa-b43b-004379928733)
+
+### Тест 6: Успешное получение списка пользователей (после добавления пользователя)
+
+Добавление пользователя:
+
+![image](https://github.com/user-attachments/assets/6d03974a-14d7-473b-aa99-f2823148dddc)
+
+Запрос после добавления пользователя:
+
+![image](https://github.com/user-attachments/assets/24450067-0b57-41bb-8265-dd0949fb50be)
+
+### Тест 7: Успешное согласование документа
+
+![image](https://github.com/user-attachments/assets/532f6919-8853-4c8d-8e5d-bed3bc5da6eb)
+
+### Тест 8: Ошибка при согласовании несуществующего документа
+
+![image](https://github.com/user-attachments/assets/a6c5817d-80a3-475b-8082-2e8830b055e6)
+
+### Тест 9: Проверка статуса документа после согласования
+
+![image](https://github.com/user-attachments/assets/de6593ba-7b9a-4202-bf2c-8813e407dc28)
 
